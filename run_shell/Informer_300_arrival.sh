@@ -43,6 +43,6 @@ do
     --des 'Exp' \
     --itr 1 \
     --train_epochs 10 \
-    --batch_size 32 \
+    --batch_size 512 \
     --patience 3
 done
