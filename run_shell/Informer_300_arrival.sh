@@ -1,28 +1,28 @@
-#！/bin/bash
+#!/bin/bash
 
-# 指定使用的 GPU 编号 (AutoDL 默认为 0)
+# 指定使用的 GPU 编号
 export CUDA_VISIBLE_DEVICES=0
 
 # 模型名称
 model_name=Informer
 
-# 基础路径配置
-# root_path: 存放 Preprocessing 文件夹的父目录
-# data_path: 具体的数据子文件夹 (Arrival 或 Departure)
+# run.py 的绝对路径
+run_script=/root/autodl-tmp/Time-Series-Library/run.py
+
+# 数据根目录与子文件夹的路径配置
 root_path_name=/root/autodl-tmp/Preprocessing/avg10_split300/
 data_path_name=Arrival
+# data_path_name=Departure
 
-# 特征维度配置
-# 你的数据包含: Lat, Lon, Altitude, Speed, Dir_sin, Dir_cos, hour_sin, min_sin (共 8 维)
-# 设置 enc_in, dec_in, c_out 均为 8
+# 特征维度配置 (Lat, Lon, Altitude, Speed, Dir_sin, Dir_cos, hour_sin, min_sin 共 8 维)
 enc_in_dim=8
 dec_in_dim=8
 c_out_dim=8
 
-# 循环运行不同预测长度的实验 (例如预测未来 24, 48, 96, 192 个点)
+# 循环运行不同预测长度的实验 (24, 48, 96, 192)
 for pred_len in 24 48 96 192
 do
-  python -u run.py \
+  python -u $run_script \
     --task_name long_term_forecast \
     --is_training 1 \
     --root_path $root_path_name \
