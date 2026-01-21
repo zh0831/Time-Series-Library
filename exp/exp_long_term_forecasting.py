@@ -337,17 +337,37 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         mae, mse, rmse, mape, mspe = metric(preds, trues)
         print('Physical Scale - mse:{}, mae:{}, dtw:{}'.format(mse, mae, dtw))
 
+        # 假设前3列分别是 Lat, Lon, Altitude (索引 0, 1, 2)
+        target_names = ['Lat', 'Lon', 'Altitude']
+
+        print("\n" + "=" * 15 + f" setting: {setting} 分维度误差 " + "=" * 15)
         f = open("result_long_term_forecast.txt", 'a')
         f.write(setting + "  \n")
         f.write('Normalized MSE:{}, Normalized MAE:{} \n'.format(mse_norm, mae_norm))  # 写入归一化结果
         f.write('Physical MSE:{}, Physical MAE:{}, dtw:{}'.format(mse, mae, dtw))  # 写入物理结果
         f.write('\n')
         f.write('\n')
+        f.write(f"\n--- Detailed Metrics for {setting} ---\n")
+
+        for i in range(len(target_names)):
+            if i < preds.shape[-1]:  # 防止索引越界
+                # 计算第 i 个维度的 MSE 和 MAE
+                dim_pred = preds[:, :, i]
+                dim_true = trues[:, :, i]
+
+                dim_mse = np.mean((dim_pred - dim_true) ** 2)
+                dim_mae = np.mean(np.abs(dim_pred - dim_true))
+
+                log_str = f"{target_names[i]} -> MSE: {dim_mse:.4f}, MAE: {dim_mae:.4f}"
+                print(log_str)
+                f.write(log_str + '\n')
+
+        f.write("\n")
         f.close()
 
         # 保存 metrics 时，你可以选择保存哪一个，或者都保存
         np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
-        # np.save(folder_path + 'pred.npy', preds)
-        # np.save(folder_path + 'true.npy', trues)
+        np.save(folder_path + 'pred.npy', preds)
+        np.save(folder_path + 'true.npy', trues)
 
         return
