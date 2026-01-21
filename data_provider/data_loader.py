@@ -903,6 +903,14 @@ class Dataset_Flight(Dataset):
         for file_idx, file_path in enumerate(files):
             df_raw = pd.read_csv(file_path)
 
+            # 修改前
+            df_raw = pd.read_csv(file_path)
+
+            # 修改后 (加上这一行)
+            df_raw = pd.read_csv(file_path)
+            if 'Time' in df_raw.columns:
+                df_raw.rename(columns={'Time': 'date'}, inplace=True)
+
             # 划分训练/验证/测试集 (按每个文件内部划分，保证每条轨迹都被覆盖)
             num_train = int(len(df_raw) * 0.7)
             num_test = int(len(df_raw) * 0.2)
