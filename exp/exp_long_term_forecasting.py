@@ -48,12 +48,18 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             #     batch_y = batch_y.float()
             #     batch_x_mark = batch_x_mark.float().to(self.device)
             #     batch_y_mark = batch_y_mark.float().to(self.device)
-            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark, batch_anchor) in enumerate(vali_loader):
-                batch_x = batch_x.float().to(self.device)
-                batch_y = batch_y.float()
-                batch_x_mark = batch_x_mark.float().to(self.device)
-                batch_y_mark = batch_y_mark.float().to(self.device)
-                batch_anchor = batch_anchor.float().to(self.device)  # 接收但不一定使用
+            for i, batch_data in enumerate(vali_loader):
+                # 1. 动态解包：不管来几个变量，前4个一定是这些
+                batch_x = batch_data[0].float().to(self.device)
+                batch_y = batch_data[1].float().to(self.device)
+                batch_x_mark = batch_data[2].float().to(self.device)
+                batch_y_mark = batch_data[3].float().to(self.device)
+
+                # 2. 检查是否有 Anchor (只有 Dataset_Flight 有)
+                if len(batch_data) > 4:
+                    batch_anchor = batch_data[4].float().to(self.device)
+                else:
+                    batch_anchor = None  # 其他数据集没有锚点
 
                 # decoder input
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
@@ -111,17 +117,22 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             #     batch_y = batch_y.float().to(self.device)
             #     batch_x_mark = batch_x_mark.float().to(self.device)
             #     batch_y_mark = batch_y_mark.float().to(self.device)
-            # 【修改点 1】：解包 5 个变量 (原代码只有 4 个)
-            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark, batch_anchor) in enumerate(train_loader):
+
+            for i, batch_data in enumerate(train_loader):
                 iter_count += 1
                 model_optim.zero_grad()
 
-                # 【修改点 2】：将数据移动到设备 (GPU)
-                batch_x = batch_x.float().to(self.device)
-                batch_y = batch_y.float().to(self.device)
-                batch_x_mark = batch_x_mark.float().to(self.device)
-                batch_y_mark = batch_y_mark.float().to(self.device)
-                batch_anchor = batch_anchor.float().to(self.device)  # 新增：锚点也放进 GPU
+                # 1. 动态解包：不管来几个变量，前4个一定是这些
+                batch_x = batch_data[0].float().to(self.device)
+                batch_y = batch_data[1].float().to(self.device)
+                batch_x_mark = batch_data[2].float().to(self.device)
+                batch_y_mark = batch_data[3].float().to(self.device)
+
+                # 2. 检查是否有 Anchor (只有 Dataset_Flight 有)
+                if len(batch_data) > 4:
+                    batch_anchor = batch_data[4].float().to(self.device)
+                else:
+                    batch_anchor = None  # 其他数据集没有锚点
 
                 # decoder input
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
@@ -195,23 +206,21 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         self.model.eval()
         with torch.no_grad():
-            # for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
-            #     batch_x = batch_x.float().to(self.device)
-            #     batch_y = batch_y.float().to(self.device)
-            #
-            #     batch_x_mark = batch_x_mark.float().to(self.device)
-            #     batch_y_mark = batch_y_mark.float().to(self.device)
-            # 【修改点 1】：解包 5 个变量
-            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark, batch_anchor) in enumerate(test_loader):
-                batch_x = batch_x.float().to(self.device)
-                batch_y = batch_y.float().to(self.device)
-                batch_x_mark = batch_x_mark.float().to(self.device)
-                batch_y_mark = batch_y_mark.float().to(self.device)
-                batch_anchor = batch_anchor.float().to(self.device)  # 获取锚点
+            for i, batch_data in enumerate(test_loader):
+                # === 兼容性修改开始 ===
+                batch_x = batch_data[0].float().to(self.device)
+                batch_y = batch_data[1].float().to(self.device)
+                batch_x_mark = batch_data[2].float().to(self.device)
+                batch_y_mark = batch_data[3].float().to(self.device)
+
+                # 只有 Dataset_Flight 返回第5个元素
+                batch_anchor = batch_data[4].float().to(self.device) if len(batch_data) > 4 else None
+                # === 兼容性修改结束 ===
 
                 # decoder input
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
+
                 # encoder - decoder
                 if self.args.use_amp:
                     with torch.cuda.amp.autocast():
@@ -222,9 +231,11 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 f_dim = -1 if self.args.features == 'MS' else 0
                 outputs = outputs[:, -self.args.pred_len:, :]
                 batch_y = batch_y[:, -self.args.pred_len:, :].to(self.device)
+
                 outputs = outputs.detach().cpu().numpy()
                 batch_y = batch_y.detach().cpu().numpy()
-                batch_anchor = batch_anchor.detach().cpu().numpy()  # 转为 numpy
+
+                # 反归一化
                 if test_data.scale and self.args.inverse:
                     shape = batch_y.shape
                     if outputs.shape[-1] != batch_y.shape[-1]:
@@ -232,21 +243,15 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     outputs = test_data.inverse_transform(outputs.reshape(shape[0] * shape[1], -1)).reshape(shape)
                     batch_y = test_data.inverse_transform(batch_y.reshape(shape[0] * shape[1], -1)).reshape(shape)
 
-                # outputs = outputs[:, :, f_dim:]
-                # batch_y = batch_y[:, :, f_dim:]
-                # B. 再反差分 (Inverse Difference / CumSum) -> 得到真实的 Lat/Lon
-                # 公式: Pred_Pos = Anchor + Cumsum(Pred_Delta)
-                # batch_anchor shape: [batch, channels] -> [batch, 1, channels]
-                batch_anchor = np.expand_dims(batch_anchor, 1)
+                # === 还原逻辑 (仅当有 anchor 时执行) ===
+                if batch_anchor is not None:
+                    batch_anchor = batch_anchor.detach().cpu().numpy()
+                    batch_anchor = np.expand_dims(batch_anchor, 1)  # [B, 1, C]
 
-                # 累加 (cumsum)
-                pred_cumsum = np.cumsum(outputs, axis=1)
-                true_cumsum = np.cumsum(batch_y, axis=1)
-
-                # 加上初始锚点
-                outputs = batch_anchor + pred_cumsum
-                batch_y = batch_anchor + true_cumsum
-
+                    # 累加还原: Pred_Pos = Anchor + Cumsum(Pred_Delta)
+                    outputs = batch_anchor + np.cumsum(outputs, axis=1)
+                    batch_y = batch_anchor + np.cumsum(batch_y, axis=1)
+                # ======================================
 
                 pred = outputs
                 true = batch_y
