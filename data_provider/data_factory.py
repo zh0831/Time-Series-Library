@@ -1,5 +1,5 @@
 from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_M4, PSMSegLoader, \
-    MSLSegLoader, SMAPSegLoader, SMDSegLoader, SWATSegLoader, UEAloader
+    MSLSegLoader, SMAPSegLoader, SMDSegLoader, SWATSegLoader, UEAloader, Dataset_Flight
 from data_provider.uea import collate_fn
 from torch.utils.data import DataLoader
 from data_provider.my_data_loader import Dataset_Trajectory
@@ -17,7 +17,8 @@ data_dict = {
     'SMD': SMDSegLoader,
     'SWAT': SWATSegLoader,
     'UEA': UEAloader,
-    'trajectory': Dataset_Trajectory, # 添加这一行
+    'trajectory': Dataset_Trajectory, # 读取所有csv文件分开处理
+    'Flight': Dataset_Flight, # 读取数据时进行差分处理
 }
 
 
