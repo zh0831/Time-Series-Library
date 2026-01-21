@@ -200,6 +200,10 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         preds = []
         trues = []
+        # 定义两个列表，专门用来存归一化的结果
+        preds_norm = []
+        trues_norm = []
+
         folder_path = './test_results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
@@ -215,7 +219,6 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
                 # 只有 Dataset_Flight 返回第5个元素
                 batch_anchor = batch_data[4].float().to(self.device) if len(batch_data) > 4 else None
-                # === 兼容性修改结束 ===
 
                 # decoder input
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
@@ -232,16 +235,32 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 outputs = outputs[:, -self.args.pred_len:, :]
                 batch_y = batch_y[:, -self.args.pred_len:, :].to(self.device)
 
-                outputs = outputs.detach().cpu().numpy()
-                batch_y = batch_y.detach().cpu().numpy()
+                # 保存归一化的输出 (在反归一化和还原之前)
+                outputs_np = outputs.detach().cpu().numpy()
+                batch_y_np = batch_y.detach().cpu().numpy()
+                preds_norm.append(outputs_np)
+                trues_norm.append(batch_y_np)
 
-                # 反归一化
+                # 反归一化 (Inverse Transform)
                 if test_data.scale and self.args.inverse:
                     shape = batch_y.shape
+                    # 此时 outputs 还是 tensor，为了后续运算，这里继续用 numpy 操作比较麻烦，
+                    # 建议复用 outputs_np 但需要注意 inverse_transform 需要 2D 输入
+                    # 这里保持你原有的逻辑，但在 outputs 变成 numpy 后操作
+
+                    # 注意：上面的 outputs_np 已经转成了 numpy，下面的 outputs 变量在你的原代码里似乎混用了 tensor 和 numpy
+                    # 修正逻辑：统一使用 numpy 进行后续处理
+                    outputs = outputs_np
+                    batch_y = batch_y_np
+
                     if outputs.shape[-1] != batch_y.shape[-1]:
                         outputs = np.tile(outputs, [1, 1, int(batch_y.shape[-1] / outputs.shape[-1])])
                     outputs = test_data.inverse_transform(outputs.reshape(shape[0] * shape[1], -1)).reshape(shape)
                     batch_y = test_data.inverse_transform(batch_y.reshape(shape[0] * shape[1], -1)).reshape(shape)
+                else:
+                    # 如果没有进上面的if，也要确保转成numpy
+                    outputs = outputs_np
+                    batch_y = batch_y_np
 
                 # === 还原逻辑 (仅当有 anchor 时执行) ===
                 if batch_anchor is not None:
@@ -258,6 +277,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
                 preds.append(pred)
                 trues.append(true)
+
                 if i % 20 == 0:
                     input = batch_x.detach().cpu().numpy()
                     if test_data.scale and self.args.inverse:
@@ -267,6 +287,26 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     pd = np.concatenate((input[0, :, -1], pred[0, :, -1]), axis=0)
                     visual(gt, pd, os.path.join(folder_path, str(i) + '.pdf'))
 
+        # ==========================================================
+        # 1. 计算并打印归一化指标 (用于论文/学术对比)
+        # ==========================================================
+        preds_norm = np.concatenate(preds_norm, axis=0)
+        trues_norm = np.concatenate(trues_norm, axis=0)
+
+        # 确保形状 [Samples, Pred_Len, Features]
+        preds_norm = preds_norm.reshape(-1, preds_norm.shape[-2], preds_norm.shape[-1])
+        trues_norm = trues_norm.reshape(-1, trues_norm.shape[-2], trues_norm.shape[-1])
+
+        print("\n" + "=" * 40)
+        print(" >>> 归一化指标 (Normalized Metrics) <<<")
+        # metric 函数返回: mae, mse, rmse, mape, mspe
+        mae_norm, mse_norm, rmse_norm, mape_norm, mspe_norm = metric(preds_norm, trues_norm)
+        print(f'Normalized MSE: {mse_norm:.4f}, Normalized MAE: {mae_norm:.4f}')
+        print("=" * 40 + "\n")
+
+        # ==========================================================
+        # 2. 计算原有物理指标 (用于实际应用分析)
+        # ==========================================================
         preds = np.concatenate(preds, axis=0)
         trues = np.concatenate(trues, axis=0)
         print('test shape:', preds.shape, trues.shape)
@@ -295,14 +335,17 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             dtw = 'Not calculated'
 
         mae, mse, rmse, mape, mspe = metric(preds, trues)
-        print('mse:{}, mae:{}, dtw:{}'.format(mse, mae, dtw))
+        print('Physical Scale - mse:{}, mae:{}, dtw:{}'.format(mse, mae, dtw))
+
         f = open("result_long_term_forecast.txt", 'a')
         f.write(setting + "  \n")
-        f.write('mse:{}, mae:{}, dtw:{}'.format(mse, mae, dtw))
+        f.write('Normalized MSE:{}, Normalized MAE:{} \n'.format(mse_norm, mae_norm))  # 写入归一化结果
+        f.write('Physical MSE:{}, Physical MAE:{}, dtw:{}'.format(mse, mae, dtw))  # 写入物理结果
         f.write('\n')
         f.write('\n')
         f.close()
 
+        # 保存 metrics 时，你可以选择保存哪一个，或者都保存
         np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
         # np.save(folder_path + 'pred.npy', preds)
         # np.save(folder_path + 'true.npy', trues)
