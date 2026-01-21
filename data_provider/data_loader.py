@@ -852,9 +852,8 @@ class UEAloader(Dataset):
 
 class Dataset_Flight(Dataset):
     def __init__(self, args, root_path, flag='train', size=None,
-                 features='S', data_path='flight_data',  # data_path 这里可以是文件夹名
+                 features='S', data_path='flight_data',
                  target='OT', scale=True, timeenc=0, freq='h', seasonal_patterns=None):
-        # size [seq_len, label_len, pred_len]
         self.args = args
         if size == None:
             self.seq_len = 24 * 4 * 4
@@ -876,16 +875,15 @@ class Dataset_Flight(Dataset):
         self.freq = freq
 
         self.root_path = root_path
-        self.data_dir = data_path  # 这里假设传入的是包含多个csv的文件夹路径
+        self.data_dir = data_path
         self.__read_data__()
 
     def __read_data__(self):
         self.scaler = StandardScaler()
 
-        # 1. 扫描文件夹下所有CSV文件
         folder_path = os.path.join(self.root_path, self.data_dir)
         files = glob.glob(os.path.join(folder_path, "*.csv"))
-        files.sort()  # 排序保证顺序一致
+        files.sort()
 
         if len(files) == 0:
             raise FileNotFoundError(f"No csv files found in {folder_path}")
@@ -893,25 +891,29 @@ class Dataset_Flight(Dataset):
         self.data_x_list = []
         self.data_y_list = []
         self.data_stamp_list = []
-        self.data_abs_list = []  # 存储原始绝对值数据，用于还原
-        self.samples = []  # 存储有效的样本索引 (file_idx, start_idx)
+        self.data_abs_list = []
+        self.samples = []
 
-        # 临时存储用于fit scaler的数据
         train_data_for_scale = []
 
-        # 2. 逐个文件处理
         for file_idx, file_path in enumerate(files):
             df_raw = pd.read_csv(file_path)
-
-            # 修改前
-            df_raw = pd.read_csv(file_path)
-
-            # 修改后 (加上这一行)
-            df_raw = pd.read_csv(file_path)
+            # 处理时间列名不一致问题
             if 'Time' in df_raw.columns:
                 df_raw.rename(columns={'Time': 'date'}, inplace=True)
 
-            # 划分训练/验证/测试集 (按每个文件内部划分，保证每条轨迹都被覆盖)
+            # --- 关键修正：如果文件太短，直接填充占位符并跳过 ---
+            # 至少要有 seq_len + pred_len 这么长才有可能生成样本
+            if len(df_raw) < self.seq_len + self.pred_len:
+                # 填充占位符以保持索引对其
+                shape = (1, df_raw.shape[1] - 1 if 'date' in df_raw else df_raw.shape[1])
+                self.data_x_list.append(np.zeros(shape))
+                self.data_y_list.append(np.zeros(shape))
+                self.data_abs_list.append(np.zeros(shape))
+                self.data_stamp_list.append(np.zeros((1, 3) if self.timeenc == 0 else (1, 4)))  # 假设维度
+                continue
+            # ------------------------------------------------
+
             num_train = int(len(df_raw) * 0.7)
             num_test = int(len(df_raw) * 0.2)
             num_vali = len(df_raw) - num_train - num_test
@@ -921,29 +923,21 @@ class Dataset_Flight(Dataset):
             border1 = border1s[self.set_type]
             border2 = border2s[self.set_type]
 
-            # 特征选择
             if self.features == 'M' or self.features == 'MS':
                 cols_data = df_raw.columns[1:]
                 df_data = df_raw[cols_data]
             elif self.features == 'S':
                 df_data = df_raw[[self.target]]
 
-            # -----------------------------------------------------------
-            # 关键改进：计算差分 (Delta) 作为模型输入
-            # -----------------------------------------------------------
-            # 我们保存原始绝对值用于后续恢复： df_abs
             df_abs = df_data.values
-
-            # 计算差分: Delta_t = X_t - X_{t-1}
-            # 填充第一行的NaN为0
             df_delta = df_data.diff().fillna(0).values
 
-            # 收集训练集的差分数据用于 fit scaler
-            if self.set_type == 0:  # 仅在构建训练集时收集数据用于fit
+            if self.set_type == 0:
                 train_slice = df_delta[border1s[0]:border2s[0]]
-                train_data_for_scale.append(train_slice)
+                if len(train_slice) > 0:  # 确保非空才加入 fit 列表
+                    train_data_for_scale.append(train_slice)
 
-            # 时间戳处理
+            # 时间戳
             df_stamp = df_raw[['date']][border1:border2]
             df_stamp['date'] = pd.to_datetime(df_stamp.date)
             if self.timeenc == 0:
@@ -956,71 +950,60 @@ class Dataset_Flight(Dataset):
                 data_stamp = time_features(pd.to_datetime(df_stamp['date'].values), freq=self.freq)
                 data_stamp = data_stamp.transpose(1, 0)
 
-            # 截取当前集合(Train/Val/Test)所需的部分
-            # 注意：这里我们存储的是 Delta 数据
+            # 数据切片
             file_data_delta = df_delta[border1:border2]
             file_data_abs = df_abs[border1:border2]
 
-            self.data_x_list.append(file_data_delta)  # 暂未归一化，稍后统一处理
-            self.data_y_list.append(file_data_delta)
-            self.data_abs_list.append(file_data_abs)
-            self.data_stamp_list.append(data_stamp)
+            # --- 关键修正：检查切片是否为空 ---
+            if len(file_data_delta) == 0:
+                # 遇到空切片（可能该文件对于 Validation 集太短），添加占位符
+                # 使用 np.zeros 创建一个符合维度要求的假数组 (1, features)
+                placeholder = np.zeros((1, df_delta.shape[1]))
+                self.data_x_list.append(placeholder)
+                self.data_y_list.append(placeholder)
+                self.data_abs_list.append(np.zeros((1, df_abs.shape[1])))
+                self.data_stamp_list.append(np.zeros((1, data_stamp.shape[1] if len(data_stamp) > 0 else 4)))
+            else:
+                self.data_x_list.append(file_data_delta)
+                self.data_y_list.append(file_data_delta)
+                self.data_abs_list.append(file_data_abs)
+                self.data_stamp_list.append(data_stamp)
 
-            # 生成样本索引
-            # 只有当文件长度足以容纳一个完整序列时才生成索引
-            valid_len = len(file_data_delta) - self.seq_len - self.pred_len + 1
-            for i in range(valid_len):
-                self.samples.append((file_idx, i))
+                # 只有数据有效且足够长时，才添加样本索引
+                valid_len = len(file_data_delta) - self.seq_len - self.pred_len + 1
+                for i in range(valid_len):
+                    self.samples.append((file_idx, i))
 
-        # 3. 统一归一化 (使用所有轨迹的训练集数据计算均值方差)
         if self.scale:
-            if self.set_type == 0:  # Train
-                all_train_data = np.concatenate(train_data_for_scale, axis=0)
-                self.scaler.fit(all_train_data)
-                # 保存scaler给val/test使用 (这里简化了，实际工程中可能需要dump scaler)
-
-            # 对所有数据列表进行transform
-            # 注意：需要在外部fit好，这里假设是在同一次运行中，val/test会复用train的scaler
-            # TSLib的架构通常会分别实例化Dataset，所以这里有个小问题：
-            # Val/Test Dataset初始化时，无法访问Train的scaler。
-            # **解决方案**：在TSLib标准流程中，Val/Test 会重新 fit scaler 到它们自己的数据上，或者无视这一点。
-            # 为了严谨，建议在外部固定 Scaler，但在 data_loader 内部比较难跨实例共享。
-            # 简单的做法：fit 当前数据片段。更严谨的做法：加载预训练的 scaler。
-            # 这里沿用 TSLib 默认逻辑：每个 set 内部 fit transform (这在分布一致时是可接受的)
-            # 或者，如果 set_type != 0，应该 load scaler。
-            # 简便起见，这里演示 fit transform 当前数据：
-
-            if self.set_type != 0:
-                # 这里的逻辑是妥协的，实际上应该加载 train scaler
-                # 为了代码能跑，我们先 fit 当前数据
-                all_current_data = np.concatenate(self.data_x_list, axis=0)
-                self.scaler.fit(all_current_data)
+            if self.set_type == 0:
+                if len(train_data_for_scale) > 0:
+                    all_train_data = np.concatenate(train_data_for_scale, axis=0)
+                    self.scaler.fit(all_train_data)
+                else:
+                    print("Warning: No valid training data found for scaling!")
+            else:
+                # 这里为了简单，如果找不到 scaler，就临时 fit 当前数据（仅用于防止报错，严谨做法是 load）
+                # 过滤掉占位符数据再 fit
+                valid_data = [d for d in self.data_x_list if len(d) > 1]
+                if len(valid_data) > 0:
+                    self.scaler.fit(np.concatenate(valid_data, axis=0))
 
             for i in range(len(self.data_x_list)):
-                self.data_x_list[i] = self.scaler.transform(self.data_x_list[i])
-                self.data_y_list[i] = self.scaler.transform(self.data_y_list[i])
+                # 只转换非占位符的数据
+                if len(self.data_x_list[i]) > 1:  # 假设占位符只有1行，真实数据通常多于1行
+                    self.data_x_list[i] = self.scaler.transform(self.data_x_list[i])
+                    self.data_y_list[i] = self.scaler.transform(self.data_y_list[i])
 
     def __getitem__(self, index):
-        # 通过索引映射找到对应的 (文件ID, 起始行号)
         file_idx, s_begin = self.samples[index]
-
         s_end = s_begin + self.seq_len
         r_begin = s_end - self.label_len
         r_end = r_begin + self.label_len + self.pred_len
 
-        # 获取 Delta 数据 (归一化后的)
         seq_x = self.data_x_list[file_idx][s_begin:s_end]
         seq_y = self.data_y_list[file_idx][r_begin:r_end]
-
         seq_x_mark = self.data_stamp_list[file_idx][s_begin:s_end]
         seq_y_mark = self.data_stamp_list[file_idx][r_begin:r_end]
-
-        # -----------------------------------------------------------
-        # 额外返回：最后一个时刻的绝对位置 (Anchor)
-        # 用于： Pred_Abs = Anchor + Cumsum(Pred_Delta)
-        # -----------------------------------------------------------
-        # 获取输入序列最后一个点的绝对坐标
-        # s_end-1 是 seq_x 的最后一个点
         anchor_abs = self.data_abs_list[file_idx][s_end - 1]
 
         return seq_x, seq_y, seq_x_mark, seq_y_mark, anchor_abs
