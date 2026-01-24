@@ -171,24 +171,43 @@ class Model(nn.Module):
 # 附：物理约束损失函数 (请在 exp/exp_basic.py 中替换 Criterion)
 # =================================================================
 class PhysicsTrajectoryLoss(nn.Module):
-    def __init__(self, alpha=0.1, beta=0.05):
+    def __init__(self, alpha=0.1, beta=0.05, weights=[1.0, 1.0, 1e-6]):
+        """
+        weights: [Lat_weight, Lon_weight, Alt_weight]
+        建议权重: Lat/Lon 设为 1.0, Alt 设为 1.0 / (高度的典型方差)
+        例如高度误差通常是 1000m^2 = 10^6，为了让它变成 1.0，乘以 1e-6
+        """
         super().__init__()
-        self.mse = nn.MSELoss()
-        self.alpha = alpha  # 速度权重
-        self.beta = beta  # 加速度权重
+        self.mse = nn.MSELoss(reduction='none')  # 改为 none，不进行平均，我们要自己算
+        self.alpha = alpha
+        self.beta = beta
+        # 注册 buffer 以便自动跟随 device (cpu/gpu)
+        self.register_buffer('weights', torch.tensor(weights).float())
+
+    def weighted_mse(self, pred, true):
+        # pred, true shape: [Batch, Len, 3]
+        # 计算每个点的平方误差: [Batch, Len, 3]
+        squared_err = (pred - true) ** 2
+
+        # 乘以权重 [1.0, 1.0, 1e-6] (广播机制)
+        # 这样 Alt 的 10000 误差就被缩小到了 0.01 级别，与 Lat/Lon 可比
+        weighted_err = squared_err * self.weights
+
+        # 对所有维度求平均
+        return weighted_err.mean()
 
     def forward(self, pred, true):
-        # 1. 位置误差
-        loss_pos = self.mse(pred, true)
+        # 1. 位置误差 (加权)
+        loss_pos = self.weighted_mse(pred, true)
 
         # 2. 速度误差 (一阶差分)
         pred_vel = pred[:, 1:, :] - pred[:, :-1, :]
         true_vel = true[:, 1:, :] - true[:, :-1, :]
-        loss_vel = self.mse(pred_vel, true_vel)
+        loss_vel = self.weighted_mse(pred_vel, true_vel)
 
         # 3. 加速度误差 (二阶差分)
         pred_acc = pred_vel[:, 1:, :] - pred_vel[:, :-1, :]
         true_acc = true_vel[:, 1:, :] - true_vel[:, :-1, :]
-        loss_acc = self.mse(pred_acc, true_acc)
+        loss_acc = self.weighted_mse(pred_acc, true_acc)
 
         return loss_pos + self.alpha * loss_vel + self.beta * loss_acc
