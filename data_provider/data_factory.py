@@ -67,6 +67,13 @@ def data_provider(args, flag):
     else:
         if args.data == 'm4':
             drop_last = False
+        # --- [新增] 针对 FlightNSTCrossformer 关闭全局归一化 ---
+        scale_flag = True
+        # 只有当模型是你自定义的 FlightNSTCrossformer 时，才关闭 Dataset 的自动缩放
+        # 这样模型读入的就是真实的物理数值 (e.g. 10000m)，而不是 0.5 这样的归一化值
+        if args.model == 'FlightNSTCrossformer':
+            scale_flag = False
+        # ----------------------------------------------------
         data_set = Data(
             args = args,
             root_path=args.root_path,
@@ -77,7 +84,8 @@ def data_provider(args, flag):
             target=args.target,
             timeenc=timeenc,
             freq=freq,
-            seasonal_patterns=args.seasonal_patterns
+            seasonal_patterns=args.seasonal_patterns,
+            scale = scale_flag  # <--- [修改点] 显式传入 scale 参数
         )
         print(flag, len(data_set))
         data_loader = DataLoader(
