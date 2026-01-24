@@ -12,6 +12,9 @@ import numpy as np
 from utils.dtw_metric import dtw, accelerated_dtw
 from utils.augmentation import run_augmentation, run_augmentation_single
 
+# [新增] 导入自定义的 Loss
+from models.FlightNSTCrossformer import PhysicsTrajectoryLoss
+
 warnings.filterwarnings('ignore')
 
 
@@ -35,7 +38,12 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         return model_optim
 
     def _select_criterion(self):
-        criterion = nn.MSELoss()
+        # [修改] 判断模型名称，如果是你的模型，则使用物理约束 Loss
+        if self.args.model == 'FlightNSTCrossformer':
+            # alpha=0.1 (速度权重), beta=0.05 (加速度权重) -> 可根据实验调整
+            criterion = PhysicsTrajectoryLoss(alpha=0.1, beta=0.05)
+        else:
+            criterion = nn.MSELoss()
         return criterion
  
 

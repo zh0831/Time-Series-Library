@@ -55,5 +55,6 @@ __all__ = [
     'Koopa', 'TiDE', 'FreTS', 'TimeMixer', 'TSMixer', 'SegRNN',
     'MambaSimple', 'TemporalFusionTransformer', 'SCINet', 'PAttn', 'TimeXer',
     'WPMixer', 'MultiPatchFormer', 'KANAD', 'MSGNet', 'TimeFilter',
-    'Sundial', 'TimeMoE', 'Chronos', 'Moirai', 'TiRex', 'TimesFM', 'Chronos2'
+    'Sundial', 'TimeMoE', 'Chronos', 'Moirai', 'TiRex', 'TimesFM', 'Chronos2',
+    'TP_iTransformer', 'FlightNSTCrossformer'
 ]
