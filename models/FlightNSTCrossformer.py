@@ -137,7 +137,7 @@ class Model(nn.Module):
 
         # Crossformer 的输出通常就是预测结果
         # dec_out shape: [Batch, Vars, Pred_Len] -> 需要转置回 [Batch, Pred_Len, Vars]
-        dec_out = dec_out.permute(0, 2, 1)
+        # dec_out = dec_out.permute(0, 2, 1)
 
         # ==========================================
         # Part 5: NST De-Normalization (反归一化)
