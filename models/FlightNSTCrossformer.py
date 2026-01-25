@@ -189,6 +189,10 @@ class PhysicsTrajectoryLoss(nn.Module):
         # 计算每个点的平方误差: [Batch, Len, 3]
         squared_err = (pred - true) ** 2
 
+        # 自动将 weights 移动到与 pred 相同的设备 (即 GPU)
+        if self.weights.device != pred.device:
+            self.weights = self.weights.to(pred.device)
+
         # 乘以权重 [1.0, 1.0, 1e-6] (广播机制)
         # 这样 Alt 的 10000 误差就被缩小到了 0.01 级别，与 Lat/Lon 可比
         weighted_err = squared_err * self.weights
