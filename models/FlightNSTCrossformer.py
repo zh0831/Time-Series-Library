@@ -182,19 +182,24 @@ class PhysicsTrajectoryLoss(nn.Module):
         self.alpha = alpha
         self.beta = beta
 
-
     def forward(self, pred, true):
-        # 1. 位置误差 (加权)
-        loss_pos = self.weighted_mse(pred, true)
+        # pred, true shape: [Batch, Length, Vars]
 
-        # 2. 速度误差 (一阶差分)
-        pred_vel = pred[:, 1:, :] - pred[:, :-1, :]
-        true_vel = true[:, 1:, :] - true[:, :-1, :]
-        loss_vel = self.weighted_mse(pred_vel, true_vel)
+        # 1. 基础 MSE Loss
+        loss_mse = self.mse(pred, true)
 
-        # 3. 加速度误差 (二阶差分)
-        pred_acc = pred_vel[:, 1:, :] - pred_vel[:, :-1, :]
-        true_acc = true_vel[:, 1:, :] - true_vel[:, :-1, :]
-        loss_acc = self.weighted_mse(pred_acc, true_acc)
+        # 2. 速度约束 (一阶差分)
+        # 计算相邻时间点的差值
+        pred_diff = pred[:, 1:, :] - pred[:, :-1, :]
+        true_diff = true[:, 1:, :] - true[:, :-1, :]
+        loss_vel = self.mse(pred_diff, true_diff)
 
-        return loss_pos + self.alpha * loss_vel + self.beta * loss_acc
+        # 3. 平滑/加速度约束 (二阶差分)
+        # 限制预测轨迹的二阶导数不要太大（防止抖动）
+        pred_acc = pred_diff[:, 1:, :] - pred_diff[:, :-1, :]
+        # 我们希望加速度尽可能平滑，或者接近真实的加速度
+        # 这里简化处理：让预测的加速度接近真实的加速度
+        true_acc = true_diff[:, 1:, :] - true_diff[:, :-1, :]
+        loss_acc = self.mse(pred_acc, true_acc)
+
+        return loss_mse + (self.alpha * loss_vel) + (self.beta * loss_acc)
