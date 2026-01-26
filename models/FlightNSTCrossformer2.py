@@ -221,6 +221,8 @@ class Model(nn.Module):
         self.pred_len = configs.pred_len
         self.seg_len = 12  # Patch Segment Length
         self.win_size = 2
+        self.task_name = configs.task_name
+
 
         # --- 1. NST & Pre-process ---
         # 简单的 Projector 配置，防止 configs 缺失参数报错

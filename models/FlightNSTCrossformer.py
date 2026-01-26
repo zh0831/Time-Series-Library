@@ -31,7 +31,6 @@ class Model(nn.Module):
         self.win_size = 2
         self.task_name = configs.task_name
         self.d_model = configs.d_model
-        self.task_name = configs.task_name
 
         # --- 1. NST Projector Components (用于学习非平稳偏移) ---
         # 我们暂时只使用 Delta (Shift) 来校正输出，因为不改动内部 Attention，所以暂不需要 Tau
