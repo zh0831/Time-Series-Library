@@ -171,7 +171,7 @@ class Model(nn.Module):
 # 附：物理约束损失函数 (请在 exp/exp_basic.py 中替换 Criterion)
 # =================================================================
 class PhysicsTrajectoryLoss(nn.Module):
-    def __init__(self, alpha=0.1, beta=0.05, weights=[1.0, 1.0, 1e-6]):
+    def __init__(self, alpha=0.1, beta=0.05):
         """
         weights: [Lat_weight, Lon_weight, Alt_weight]
         建议权重: Lat/Lon 设为 1.0, Alt 设为 1.0 / (高度的典型方差)
@@ -181,24 +181,7 @@ class PhysicsTrajectoryLoss(nn.Module):
         self.mse = nn.MSELoss(reduction='none')  # 改为 none，不进行平均，我们要自己算
         self.alpha = alpha
         self.beta = beta
-        # 注册 buffer 以便自动跟随 device (cpu/gpu)
-        self.register_buffer('weights', torch.tensor(weights).float())
 
-    def weighted_mse(self, pred, true):
-        # pred, true shape: [Batch, Len, 3]
-        # 计算每个点的平方误差: [Batch, Len, 3]
-        squared_err = (pred - true) ** 2
-
-        # 自动将 weights 移动到与 pred 相同的设备 (即 GPU)
-        if self.weights.device != pred.device:
-            self.weights = self.weights.to(pred.device)
-
-        # 乘以权重 [1.0, 1.0, 1e-6] (广播机制)
-        # 这样 Alt 的 10000 误差就被缩小到了 0.01 级别，与 Lat/Lon 可比
-        weighted_err = squared_err * self.weights
-
-        # 对所有维度求平均
-        return weighted_err.mean()
 
     def forward(self, pred, true):
         # 1. 位置误差 (加权)

@@ -38,27 +38,9 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         return model_optim
 
     def _select_criterion(self):
-        # 经纬度权重设为 1，高度权重设为 1e-6 或 1e-7
-        # 理由：(100m)^2 * 1e-6 = 0.01，这与 (0.1度)^2 = 0.01 量级相当
         if self.args.model == 'FlightNSTCrossformer':
             # alpha=0.1 (速度权重), beta=0.05 (加速度权重) -> 可根据实验调整
-            custom_weights = [1.0, 1.0, 1.0e-8, 1.0e-6, 0.1, 0.1, 0.1, 0.1]
-
-            # 确保权重长度和模型输出维度一致，防止报错
-            if len(custom_weights) != self.args.c_out:
-                print(f"Warning: Weights length ({len(custom_weights)}) != c_out ({self.args.c_out}). Auto-padding...")
-                # 如果维度不一致，自动补全或截断
-                if len(custom_weights) < self.args.c_out:
-                    custom_weights += [1.0] * (self.args.c_out - len(custom_weights))
-                else:
-                    custom_weights = custom_weights[:self.args.c_out]
-
-            criterion = PhysicsTrajectoryLoss(
-                alpha=0.1,
-                beta=0.05,
-                weights=custom_weights
-            )
-            print(f"Using PhysicsTrajectoryLoss with weights: {custom_weights}")
+            criterion = PhysicsTrajectoryLoss(alpha=0.1, beta=0.05)
         else:
             criterion = nn.MSELoss()
         return criterion
