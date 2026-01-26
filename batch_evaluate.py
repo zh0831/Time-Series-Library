@@ -31,6 +31,7 @@ class Args:
         self.model = 'iTransformer'  # 【对应脚本】model_name
         self.data = 'trajectory'  # 【对应脚本】data="trajectory"
         self.features = 'M'  # 【对应脚本】features="M"
+        self.task_name = 'long_term_forecast'
 
         # --- 路径配置 ---
         self.root_path = DATA_ROOT_PATH
@@ -61,11 +62,23 @@ class Args:
         # --- 运行参数 ---
         self.num_workers = 0  # 推理时建议设为0，避免多进程报错
         self.itr = 1
-        self.batch_size = 1024  # 【对应脚本】batch_size
+        self.batch_size = 512  # 【对应脚本】batch_size
+        self.freq = 'h'  # <--- 必须加上这一行 (可以是 'h', 't', 's' 等，通常 'h' 通用)
+        self.target = 'OT'  # [新增] 预测目标列名，虽然多变量预测不用，但Dataset初始化可能需要
+        self.seasonal_patterns = 'Monthly'
+        self.use_amp = False
+        self.distil = True
+        self.moving_avg = 25
+        self.patch_len = 16
+
         self.use_gpu = True
         self.gpu = 0
+        self.gpu_type = 'cuda'
         self.use_multi_gpu = False
         self.devices = '0'
+
+        self.p_hidden_dims = [128, 128]
+        self.p_hidden_layers = 2
 
         # --- 关键控制参数 ---
         self.is_training = 0  # 强制为测试模式
