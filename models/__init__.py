@@ -56,5 +56,5 @@ __all__ = [
     'MambaSimple', 'TemporalFusionTransformer', 'SCINet', 'PAttn', 'TimeXer',
     'WPMixer', 'MultiPatchFormer', 'KANAD', 'MSGNet', 'TimeFilter',
     'Sundial', 'TimeMoE', 'Chronos', 'Moirai', 'TiRex', 'TimesFM', 'Chronos2',
-    'TP_iTransformer', 'FlightNSTCrossformer'
+    'TP_iTransformer', 'FlightNSTCrossformer','FlightNSTCrossformer2'
 ]
