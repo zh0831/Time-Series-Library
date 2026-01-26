@@ -202,4 +202,7 @@ class PhysicsTrajectoryLoss(nn.Module):
         true_acc = true_diff[:, 1:, :] - true_diff[:, :-1, :]
         loss_acc = self.mse(pred_acc, true_acc)
 
-        return loss_mse + (self.alpha * loss_vel) + (self.beta * loss_acc)
+        # === 修改点：先对各部分取 mean() 再相加，解决形状不匹配问题 ===
+        total_loss = loss_mse.mean() + (self.alpha * loss_vel.mean()) + (self.beta * loss_acc.mean())
+
+        return total_loss
