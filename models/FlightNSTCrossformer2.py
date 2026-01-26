@@ -26,7 +26,7 @@ class DS_FullAttention(nn.Module):
         self.output_attention = output_attention
         self.dropout = nn.Dropout(attention_dropout)
 
-    def forward(self, queries, keys, values, attn_mask, tau=None):
+    def forward(self, queries, keys, values, attn_mask, tau=None, delta=None):
         # queries: [B, L, H, E]
         B, L, H, E = queries.shape
         _, S, _, _ = keys.shape
