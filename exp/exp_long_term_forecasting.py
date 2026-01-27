@@ -374,7 +374,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         # 保存 metrics 时，你可以选择保存哪一个，或者都保存
         np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
-        np.save(folder_path + 'pred.npy', preds)
-        np.save(folder_path + 'true.npy', trues)
+        #np.save(folder_path + 'pred.npy', preds)
+        #np.save(folder_path + 'true.npy', trues)
 
         return
