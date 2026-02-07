@@ -345,6 +345,8 @@ def forward(self, pred, true):
     loss_acc = self.mse(pred_acc, true_acc)
 
     # === 修改点：先对各部分取 mean() 再相加，解决形状不匹配问题 ===
-    total_loss = loss_mse.mean() + (self.alpha * loss_vel.mean()) + (self.beta * loss_acc.mean())
+    #total_loss = loss_mse.mean() + (self.alpha * loss_vel.mean()) + (self.beta * loss_acc.mean())
+    # 消融实验五：只保留基础 MSE 损失
+    total_loss = loss_mse.mean()
 
     return total_loss
